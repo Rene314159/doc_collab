@@ -88,7 +88,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'doc_collab_db',
         'USER': 'doc_collab_db_user',
-        'PASSWORD': 'doc_collab_db_password',
+        'PASSWORD': 'doc_collab_db_pass',
         'HOST': 'localhost',
         'PORT': '5432',
     }
