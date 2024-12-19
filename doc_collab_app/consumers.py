@@ -1,16 +1,29 @@
+# doc_collab_app/consumers.py
+
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
-from .operations import transform_operation, apply_operation
 from channels.db import database_sync_to_async
+from channels.exceptions import AcceptConnection, DenyConnection, StopConsumer
 from django.core.exceptions import ObjectDoesNotExist
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 class DocumentConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
+        if not self.scope["user"].is_authenticated:
+            await self.close()
+            return
+
         self.document_id = self.scope['url_route']['kwargs']['document_id']
         self.room_group_name = f'document_{self.document_id}'
 
-        # Verify user has permission
-        if not await self.has_permission():
+        try:
+            has_access = await self.check_document_access()
+            if not has_access:
+                await self.close()
+                return
+        except ObjectDoesNotExist:
             await self.close()
             return
 
@@ -19,83 +32,80 @@ class DocumentConsumer(AsyncJsonWebsocketConsumer):
             self.channel_name
         )
         await self.accept()
-
+        
         # Send current document state
         await self.send_document_state()
 
-    @database_sync_to_async
-    def has_permission(self):
-        try:
-            document = Document.objects.get(id=self.document_id)
-            return document.has_user_permission(self.scope['user'])
-        except ObjectDoesNotExist:
-            return False
+    async def disconnect(self, close_code):
+        if hasattr(self, 'room_group_name'):
+            await self.channel_layer.group_discard(
+                self.room_group_name,
+                self.channel_name
+            )
 
     async def receive_json(self, content):
-        operation_type = content.get('type')
-        operation_data = content.get('data')
-        version = content.get('version')
+        try:
+            message_type = content.get('type')
+            if message_type == 'document_update':
+                await self.handle_document_update(content)
+            else:
+                logger.warning(f"Unknown message type: {message_type}")
+        except Exception as e:
+            logger.error(f"Error handling message: {str(e)}")
+            await self.send_json({
+                'type': 'error',
+                'message': 'Internal server error'
+            })
 
-        if not all([operation_type, operation_data, version]):
-            return
+    @database_sync_to_async
+    def check_document_access(self):
+        from .models import Document
+        document = Document.objects.get(id=self.document_id)
+        return document.has_user_access(self.scope['user'])
 
-        # Transform operation against any concurrent operations
-        transformed_op = await self.transform_operation(operation_type, operation_data, version)
-        if not transformed_op:
-            # Send current state if operation cannot be transformed
-            await self.send_document_state()
-            return
+    @database_sync_to_async
+    def save_document_update(self, content):
+        from .models import Document, DocumentVersion
+        document = Document.objects.select_for_update().get(id=self.document_id)
+        
+        # Create new version
+        DocumentVersion.objects.create(
+            document=document,
+            content=document.content,
+            version=document.version,
+            created_by=self.scope['user']
+        )
+        
+        # Update document
+        document.content = content
+        document.version += 1
+        document.save()
+        
+        return document.version
 
-        # Apply operation to document
-        success = await self.apply_operation(transformed_op)
-        if success:
-            # Broadcast to other clients
+    async def handle_document_update(self, content):
+        try:
+            new_version = await self.save_document_update(content['data'])
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
-                    'type': 'document_operation',
-                    'operation': transformed_op,
+                    'type': 'broadcast_update',
+                    'content': content['data'],
+                    'version': new_version,
                     'user_id': self.scope['user'].id
                 }
             )
-
-    @database_sync_to_async
-    def transform_operation(self, op_type, op_data, version):
-        document = Document.objects.select_for_update().get(id=self.document_id)
-        if document.version > version:
-            # Transform operation against all operations since client version
-            concurrent_ops = document.versions.filter(version__gt=version).order_by('version')
-            transformed = op_data
-            for concurrent in concurrent_ops:
-                transformed = transform_operation(transformed, concurrent.operation_data)
-            return {
-                'type': op_type,
-                'data': transformed,
-                'version': document.version + 1
-            }
-        return None
-
-    @database_sync_to_async
-    def apply_operation(self, operation):
-        try:
-            with transaction.atomic():
-                document = Document.objects.select_for_update().get(id=self.document_id)
-                
-                # Apply operation to document content
-                document.content = apply_operation(document.content, operation['data'])
-                document.version += 1
-                document.save()
-
-                # Create version record
-                DocumentVersion.objects.create(
-                    document=document,
-                    content=document.content,
-                    version=document.version,
-                    created_by=self.scope['user'],
-                    operation_type=operation['type'],
-                    operation_data=operation['data']
-                )
-                return True
         except Exception as e:
-            print(f"Error applying operation: {e}")
-            return False
+            logger.error(f"Error saving document update: {str(e)}")
+            await self.send_json({
+                'type': 'error',
+                'message': 'Failed to save document'
+            })
+
+    async def broadcast_update(self, event):
+        await self.send_json({
+            'type': 'document_update',
+            'content': event['content'],
+            'version': event['version'],
+            'user_id': event['user_id']
+        })

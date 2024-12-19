@@ -7,12 +7,36 @@ services:
     restart: always
     environment:
       POSTGRES_USER: doc_collab_db_user
-      POSTGRES_PASSWORD: doc_collab_db_pass 
+      POSTGRES_PASSWORD: doc_collab_db_pass
       POSTGRES_DB: doc_collab_db
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  redis:
+    image: redis:6
+    container_name: redis_container
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  web:
+    build: .
+    command: daphne -b 0.0.0.0 -p 8000 doc_collab.asgi:application
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+    environment:
+      DATABASE_URL: postgres://doc_collab_db_user:doc_collab_db_pass@db:5432/doc_collab_db
+      REDIS_URL: redis://redis:6379/0
+
 volumes:
   postgres_data:
+  redis_data:
+  
