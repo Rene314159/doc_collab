@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-f5%5gic%v(^b&8w(amajknx$57ayubjqfhug6+^-s=1r5yf$e0
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 
 
 # Application definition
@@ -45,11 +45,14 @@ INSTALLED_APPS = [
     # 3rd-party apps
 
     'channels',
+    'corsheaders',
     'rest_framework',
 
 ]
 
 MIDDLEWARE = [
+    'csp.middleware.CSPMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -90,8 +93,8 @@ DATABASES = {
         'NAME': 'doc_collab_db',
         'USER': 'doc_collab_db_user',
         'PASSWORD': 'doc_collab_db_pass',
-        'HOST': 'localhost',
-        'PORT': '5433',
+        'HOST': 'db',
+        'PORT': '5432',
     }
 }
 
@@ -139,6 +142,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.BasicAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
@@ -175,4 +179,8 @@ SESSION_ENGINE = "django.contrib.sessions.backends.cache"
 SESSION_CACHE_ALIAS = "default"
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+CORS_ALLOW_ALL_ORIGINS = True
+
+CSP_CONNECT_SRC = ["'self'", "ws://localhost:8000"]
 

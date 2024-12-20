@@ -4,37 +4,51 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from channels.db import database_sync_to_async
 from channels.exceptions import AcceptConnection, DenyConnection, StopConsumer
 from django.core.exceptions import ObjectDoesNotExist
+from django.contrib.auth import get_user_model
 import json
 import logging
 
 logger = logging.getLogger(__name__)
 
+
 class DocumentConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
-        if not self.scope["user"].is_authenticated:
-            await self.close()
-            return
-
-        self.document_id = self.scope['url_route']['kwargs']['document_id']
-        self.room_group_name = f'document_{self.document_id}'
-
-        try:
-            has_access = await self.check_document_access()
-            if not has_access:
-                await self.close()
-                return
-        except ObjectDoesNotExist:
-            await self.close()
-            return
-
-        await self.channel_layer.group_add(
-            self.room_group_name,
-            self.channel_name
-        )
-        await self.accept()
+        # Get auth header from scope
+        headers = dict(self.scope['headers'])
+        if b'authorization' in headers:
+            try:
+                # Parse basic auth
+                auth_header = headers[b'authorization'].decode('utf-8')
+                auth_type, auth_data = auth_header.split(' ', 1)
+                if auth_type.lower() == 'basic':
+                    username, password = base64.b64decode(auth_data).decode('utf-8').split(':', 1)
+                    # Verify credentials
+                    if await self.authenticate_user(username, password):
+                        await self.accept()
+                        self.document_id = self.scope['url_route']['kwargs']['document_id']
+                        self.room_group_name = f'document_{self.document_id}'
+                        await self.channel_layer.group_add(
+                            self.room_group_name,
+                            self.channel_name
+                        )
+                        return
+            except Exception as e:
+                print(f"Authentication error: {e}")
         
-        # Send current document state
-        await self.send_document_state()
+        # If we get here, authentication failed
+        await self.close()
+
+    @database_sync_to_async
+    def authenticate_user(self, username, password):
+        User = get_user_model()
+        try:
+            user = User.objects.get(username=username)
+            if user.check_password(password):
+                self.scope['user'] = user
+                return True
+        except User.DoesNotExist:
+            pass
+        return False
 
     async def disconnect(self, close_code):
         if hasattr(self, 'room_group_name'):

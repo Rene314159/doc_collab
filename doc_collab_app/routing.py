@@ -1,7 +1,6 @@
-# doc_collab_app/routing.py
 from django.urls import re_path
-from . import consumers
+from doc_collab_app.consumers import DocumentConsumer
 
 websocket_urlpatterns = [
-    re_path(r'ws/document/(?P<document_id>\w+)/$', consumers.DocumentConsumer.as_asgi()),
+    re_path(r"^ws/document/(?P<document_id>[^/]+)/$", DocumentConsumer.as_asgi()),
 ]
