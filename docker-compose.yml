@@ -24,7 +24,7 @@ services:
 
   web:
     build: .
-    command: daphne -b 0.0.0.0 -p 8000 doc_collab.asgi:application
+    command: daphne -b 0.0.0.0 -p 8000 -v 2 doc_collab.asgi:application
     volumes:
       - .:/app
     ports:
@@ -33,8 +33,9 @@ services:
       - db
       - redis
     environment:
-      DATABASE_URL: postgres://doc_collab_db_user:doc_collab_db_pass@db:5432/doc_collab_db
-      REDIS_URL: redis://redis:6379/0
+      - DJANGO_SETTINGS_MODULE=doc_collab.settings
+    # DATABASE_URL: postgres://doc_collab_db_user:doc_collab_db_pass@db:5432/doc_collab_db
+    # REDIS_URL: redis://redis:6379/0
 
 volumes:
   postgres_data:

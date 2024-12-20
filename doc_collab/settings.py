@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-f5%5gic%v(^b&8w(amajknx$57ayubjqfhug6+^-s=1r5yf$e0
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -150,13 +150,19 @@ REST_FRAMEWORK = {
     ],
 }
 
+# CHANNEL_LAYERS = {
+#     'default': {
+#         'BACKEND': 'channels_redis.core.RedisChannelLayer',
+#         'CONFIG': {
+#             "hosts": [('redis', 6379)],
+#         },
+#     },
+# }
+
 CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            "hosts": [('redis', 6379)],
-        },
-    },
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer"  #  instead of Redis for now
+    }
 }
 
 
@@ -180,7 +186,23 @@ SESSION_CACHE_ALIAS = "default"
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
+# for development +++ NOT FOR PRODUCTION 
 CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+
 
 CSP_CONNECT_SRC = ["'self'", "ws://localhost:8000"]
 
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+}

@@ -14,6 +14,23 @@ class Document(models.Model):
     version = models.IntegerField(default=1)
     is_deleted = models.BooleanField(default=False)
 
+    def has_user_permission(self, user, required_level='view'):
+        if self.owner == user:
+            return True
+            
+        try:
+            permission = self.documentpermission_set.get(user=user)
+            if required_level == 'view':
+                return True
+            elif required_level == 'edit':
+                return permission.permission_level in ['edit', 'admin']
+            elif required_level == 'admin':
+                return permission.permission_level == 'admin'
+        except DocumentPermission.DoesNotExist:
+            return False
+        
+        return False
+
     class Meta:
         ordering = ['-updated_at']
 
@@ -30,3 +47,24 @@ class DocumentVersion(models.Model):
         ordering = ['-version']
         unique_together = ['document', 'version']
     
+class DocumentPermission(models.Model):
+    PERMISSION_CHOICES = [
+        ('view', 'View Only'),
+        ('edit', 'Can Edit'),
+        ('admin', 'Admin Access')
+    ]
+    
+    document = models.ForeignKey(Document, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    permission_level = models.CharField(max_length=10, choices=PERMISSION_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        related_name='granted_permissions'
+    )
+
+    class Meta:
+        unique_together = ['document', 'user']
+
