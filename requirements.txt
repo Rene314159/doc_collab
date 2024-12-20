@@ -22,6 +22,9 @@ pyasn1==0.6.1
 pyasn1_modules==0.4.1
 pycparser==2.22
 pyOpenSSL==24.3.0
+pytest
+pytest-django
+pytest-asyncio  # for async tests (WebSocket)
 redis==5.2.1
 service-identity==24.2.0
 sqlparse==0.5.3

@@ -1,9 +1,13 @@
-from rest_framework import viewsets
+from rest_framework import viewsets, status
+# from django.contrib.auth import get_user_model
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import Document, DocumentVersion
+from .models import Document, DocumentVersion, DocumentPermission
 from .serializers import DocumentSerializer, DocumentVersionSerializer
+
+# Define User at module level
+# User = get_user_model()
 
 class DocumentViewSet(viewsets.ModelViewSet):
     serializer_class = DocumentSerializer
@@ -24,59 +28,43 @@ class DocumentViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def invite(self, request, pk=None):
+        """Invite a collaborator to a document"""
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
         document = self.get_object()
         user_email = request.data.get('user_email')
         permission_level = request.data.get('permission_level')
         
-        try:
-            user_to_invite = User.objects.get(email=user_email)
-            DocumentPermission.objects.create(
-                document=document,
-                user=user_to_invite,
-                permission_level=permission_level,
-                created_by=request.user
-            )
-            return Response({'status': 'user invited'})
-        except User.DoesNotExist:
+        if not user_email or not permission_level:
             return Response(
-                {'error': 'User not found'}, 
-                status=status.HTTP_404_NOT_FOUND
+                {'error': 'Both user_email and permission_level are required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if permission_level not in ['view', 'edit', 'admin']:
+            return Response(
+                {'error': 'Invalid permission level'}, 
+                status=status.HTTP_400_BAD_REQUEST
             )
 
-    @action(detail=True, methods=['post'])
-    def revoke_access(self, request, pk=None):
-        document = self.get_object()
-        user_email = request.data.get('user_email')
-        
-        try:
-            permission = DocumentPermission.objects.get(
-                document=document,
-                user__email=user_email
-            )
-            permission.delete()
-            return Response({'status': 'access revoked'})
-        except DocumentPermission.DoesNotExist:
-            return Response(
-                {'error': 'Permission not found'}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
-    
-    @action(detail=True, methods=['post'])
-    def invite(self, request, pk=None):
-        """Invite a collaborator to a document"""
-        document = self.get_object()
-        user_email = request.data.get('user_email')
-        permission_level = request.data.get('permission_level')
-        
         try:
             user_to_invite = User.objects.get(email=user_email)
-            DocumentPermission.objects.create(
+            # Check if permission already exists
+            permission, created = DocumentPermission.objects.get_or_create(
                 document=document,
                 user=user_to_invite,
-                permission_level=permission_level,
-                created_by=request.user
+                defaults={'permission_level': permission_level, 'created_by': request.user}
             )
-            return Response({'status': 'user invited'})
+            
+            if not created:
+                permission.permission_level = permission_level
+                permission.save()
+            
+            return Response({
+                'status': 'user invited',
+                'user_email': user_email,
+                'permission_level': permission_level
+            })
         except User.DoesNotExist:
             return Response(
                 {'error': 'User not found'}, 
@@ -89,6 +77,12 @@ class DocumentViewSet(viewsets.ModelViewSet):
         document = self.get_object()
         user_email = request.data.get('user_email')
         
+        if not user_email:
+            return Response(
+                {'error': 'user_email is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         try:
             permission = DocumentPermission.objects.get(
                 document=document,
@@ -109,6 +103,18 @@ class DocumentViewSet(viewsets.ModelViewSet):
         user_email = request.data.get('user_email')
         new_permission_level = request.data.get('permission_level')
         
+        if not user_email or not new_permission_level:
+            return Response(
+                {'error': 'Both user_email and permission_level are required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if new_permission_level not in ['view', 'edit', 'admin']:
+            return Response(
+                {'error': 'Invalid permission level'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         try:
             permission = DocumentPermission.objects.get(
                 document=document,
@@ -116,13 +122,13 @@ class DocumentViewSet(viewsets.ModelViewSet):
             )
             permission.permission_level = new_permission_level
             permission.save()
-            return Response({'status': 'permission updated'})
+            return Response({
+                'status': 'permission updated',
+                'user_email': user_email,
+                'permission_level': new_permission_level
+            })
         except DocumentPermission.DoesNotExist:
             return Response(
                 {'error': 'Permission not found'}, 
                 status=status.HTTP_404_NOT_FOUND
             )
-
-
-
-

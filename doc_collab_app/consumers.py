@@ -13,7 +13,16 @@ class DocumentConsumer(AsyncJsonWebsocketConsumer):
         print("="*50)  # Very visible separator
         print("CONNECT METHOD STARTED")
         print(f"SCOPE: {self.scope}")
-        self.document_id = self.scope['url_route']['kwargs']['document_id']
+        self.document_id = (
+            self.scope.get('url_route', {}).get('kwargs', {}).get('document_id') or
+            self.scope['path'].split('/')[-2]  # Fallback to parsing from path
+        )
+
+        if not self.document_id:
+            await self.close()
+            return
+        
+        
         print(f"DOCUMENT ID: {self.document_id}")
         self.room_group_name = f'document_{self.document_id}'
         self.authenticated = False

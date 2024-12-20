@@ -13,6 +13,8 @@ class Document(models.Model):
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='owned_documents')
     version = models.IntegerField(default=1)
     is_deleted = models.BooleanField(default=False)
+    def __str__(self):
+        return self.title
 
     def has_user_permission(self, user, required_level='view'):
         if self.owner == user:
@@ -43,9 +45,13 @@ class DocumentVersion(models.Model):
     operation_type = models.CharField(max_length=20)  # insert, delete, format
     operation_data = models.JSONField()  # Store operation details
 
+
+    
     class Meta:
         ordering = ['-version']
         unique_together = ['document', 'version']
+
+    
     
 class DocumentPermission(models.Model):
     PERMISSION_CHOICES = [
